@@ -4,6 +4,8 @@ import { Menu, X, ArrowRight, Play, Twitter, Instagram, Facebook, MessageCircle,
 import { TransferItem, RumorItem, ClubMove, TopTransfer } from './types';
 import Login from './components/Login';
 import Standings from './components/Standings';
+import { supabase } from './lib/supabase';
+import { User as SupabaseUser } from '@supabase/supabase-js';
 
 // Mock Data Updated with real recent news (Simulated Winter 2026 results)
 const LIVE_TRANSFERS: TransferItem[] = [
@@ -242,15 +244,35 @@ export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [view, setView] = useState<'home' | 'login' | 'standings'>('home');
+  const [user, setUser] = useState<SupabaseUser | null>(null);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50);
     window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    
+    // Check initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      subscription.unsubscribe();
+    };
   }, []);
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setView('home');
+  };
+
   if (view === 'login') {
-    return <Login onBack={() => setView('home')} />;
+    return <Login onBack={() => setView('home')} onSuccess={() => setView('home')} />;
   }
 
   if (view === 'standings') {
@@ -322,13 +344,32 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-4">
-            <button 
-              onClick={() => setView('login')}
-              className="hidden sm:flex items-center gap-2 bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all"
-            >
-              <User className="w-4 h-4" />
-              Entrar
-            </button>
+            {user ? (
+              <div className="flex items-center gap-3">
+                <div className="hidden sm:flex flex-col items-end">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-white">
+                    {user.user_metadata.full_name || user.email?.split('@')[0]}
+                  </span>
+                  <button 
+                    onClick={handleLogout}
+                    className="text-[8px] font-black uppercase tracking-[0.2em] text-pt-red hover:text-white transition-colors"
+                  >
+                    Sair
+                  </button>
+                </div>
+                <div className="w-10 h-10 bg-pt-red/10 border border-pt-red/20 rounded-xl flex items-center justify-center text-pt-red">
+                  <User className="w-5 h-5" />
+                </div>
+              </div>
+            ) : (
+              <button 
+                onClick={() => setView('login')}
+                className="hidden sm:flex items-center gap-2 bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all"
+              >
+                <User className="w-4 h-4" />
+                Entrar
+              </button>
+            )}
             <button 
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               className="p-2 bg-white/5 rounded-full hover:bg-white/10 transition-colors"
@@ -633,11 +674,12 @@ export default function App() {
               <form className="flex flex-col md:flex-row gap-4 max-w-lg mx-auto" onSubmit={(e) => e.preventDefault()}>
                 <input 
                   type="email" 
+                  defaultValue={user?.email || ''}
                   placeholder="Teu email oficial"
                   className="flex-grow bg-pt-dark-900/50 border-white/10 rounded-2xl py-5 px-8 text-white placeholder-gray-600 focus:ring-pt-red focus:border-pt-red transition-all backdrop-blur-md outline-none"
                 />
                 <button className="bg-white text-black font-black py-5 px-10 rounded-2xl uppercase tracking-widest text-sm hover:bg-pt-red hover:text-white transition-all shadow-2xl active:scale-95">
-                  Aderir Agora
+                  {user ? 'Confirmar Subscrição' : 'Aderir Agora'}
                 </button>
               </form>
               <p className="mt-8 text-[10px] text-gray-500 font-bold uppercase tracking-widest">+ 50.000 adeptos já subscreveram</p>
